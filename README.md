@@ -43,94 +43,46 @@ bee-sync/
 npm install -g @beeai/cli
 ```
 
-### 2. Log in to Bee
-
-```bash
-bee login
-```
-
-This opens your browser for authentication and stores the token in your macOS Keychain.
-
-Verify it worked:
-
-```bash
-bee status
-```
-
-### 3. Clone this repo
+### 2. Clone this repo
 
 ```bash
 git clone https://github.com/RShuken/bee-sync.git ~/bee-sync
 cd ~/bee-sync
-chmod +x sync.sh
 ```
 
-### 4. Run your first sync
+### 3. Run setup
 
-The script auto-detects its own directory, so no path configuration needed. Just run it:
+The setup script handles everything — authentication, token caching, LaunchAgent installation, and a test sync:
 
 ```bash
-./sync.sh
+./setup.sh
 ```
 
-You should see:
+This will:
+1. Check that the Bee CLI is installed
+2. Log you in to Bee if needed (opens your browser)
+3. Cache your auth token so syncing works from any context (SSH, cron, Claude Code)
+4. Install a LaunchAgent for nightly syncing at 11:00 PM
+5. Run a test sync to make sure everything works
 
-```
-Bee Sync: 2026-04-12T05:00:02Z
-Checking authentication...
-Auth OK.
-Syncing from Bee... (attempt 1/5)
-Synced 673 files to current/.
-Archiving to /Users/you/bee-sync/archive/2026-04-12/...
-Archive complete.
-Bee Sync complete: 673 files archived to 2026-04-12
-```
+**Important:** Run this from a GUI terminal (Terminal.app, iTerm, etc.) — not over SSH. The initial setup needs access to the macOS Keychain, which requires a GUI session.
 
-### 5. Set up nightly automation
+That's it. You're done.
 
-Copy the included LaunchAgent plist to your LaunchAgents directory:
+## How it works
 
-```bash
-cp com.bee.sync.plist ~/Library/LaunchAgents/
-```
+### Nightly sync
 
-Edit it to match your username and paths:
+The LaunchAgent runs `sync.sh` every night at 11:00 PM. The script:
 
-```bash
-nano ~/Library/LaunchAgents/com.bee.sync.plist
-```
+1. Checks authentication (Keychain or cached token)
+2. Runs `bee sync` to pull all your data into `current/`
+3. Copies `current/` to `archive/YYYY-MM-DD/` for a dated snapshot
+4. Logs everything to `sync.log`
 
-Replace every instance of `YOUR_USER` with your macOS username (run `whoami` if unsure).
+### Retry logic
 
-Load it:
-
-```bash
-launchctl load ~/Library/LaunchAgents/com.bee.sync.plist
-```
-
-Verify it's scheduled:
-
-```bash
-launchctl list | grep bee
-```
-
-The sync runs at **11:00 PM local time** every night. To change the time, edit the `Hour` and `Minute` values in the plist.
-
-### 6. Trigger a sync manually (anytime)
-
-```bash
-launchctl kickstart gui/$(id -u)/com.bee.sync
-```
-
-Or just run the script directly:
-
-```bash
-~/bee-sync/sync.sh
-```
-
-## How the retry logic works
-
-The Bee API occasionally drops socket connections mid-sync. Instead of failing silently and leaving you with stale data, the script:
+The Bee API occasionally drops socket connections mid-sync. Instead of failing and leaving you with stale data, the script:
 
 1. Attempts the sync
 2. If it fails, waits 30 seconds and tries again
@@ -138,6 +90,24 @@ The Bee API occasionally drops socket connections mid-sync. Instead of failing s
 4. Gives up after 5 attempts and logs the failure
 
 This handles the transient network issues that would otherwise cause missed days.
+
+### Token caching
+
+Bee CLI stores auth tokens in the macOS Keychain, which only works in GUI sessions. The setup script extracts your token and caches it to `~/.bee/token-prod` so syncing works everywhere — from SSH, Claude Code, or any non-GUI context.
+
+## Manual sync
+
+Trigger a sync anytime:
+
+```bash
+~/bee-sync/sync.sh
+```
+
+Or through the LaunchAgent:
+
+```bash
+launchctl kickstart gui/$(id -u)/com.bee.sync
+```
 
 ## Using with Claude Code
 
@@ -155,23 +125,34 @@ Now Claude has access to your conversations, daily summaries, facts, and todos. 
 - "What are all the action items I mentioned this month?"
 - "What facts does Bee know about me related to work?"
 
-You can also build tools on top of this — the data is just markdown files.
+You can also build on top of this — the data is just markdown files.
 
 ## Troubleshooting
 
-### "Bee auth is stale"
+### Setup says "Could not extract token from Keychain"
 
-Your Keychain token has expired. Run `bee login` again from a **GUI terminal session** (Terminal.app, iTerm, etc.). This will not work over SSH because macOS Keychain requires the GUI login session.
+macOS may prompt you to allow Keychain access. Look for a system dialog asking for your password. Approve it and re-run `./setup.sh`.
 
-If you access your Mac remotely, use Screen Sharing or VNC — not SSH.
+If you're over SSH, you must run setup from a GUI session (Terminal.app, Screen Sharing, VNC).
+
+### Auth expired
+
+Tokens expire periodically. Re-run the setup script from a GUI terminal:
+
+```bash
+cd ~/bee-sync
+./setup.sh
+```
+
+This will re-authenticate and update the cached token.
 
 ### All 5 retry attempts failed
 
-Check `sync.log` for the error details. Common causes:
+Check `sync.log` for error details. Common causes:
 
 - **No internet** — the Mac was asleep or offline
 - **Bee API outage** — wait and it'll catch up on the next run
-- **Auth expired** — check if `bee status` works; re-login if needed
+- **Auth expired** — re-run `./setup.sh`
 
 ### Missing days in the archive
 
@@ -179,11 +160,11 @@ The archive is named by the date when the sync *runs*, not the date of the data.
 
 ### Sync works manually but not from LaunchAgent
 
-The LaunchAgent runs in the GUI session domain, which is required for Keychain access. Make sure:
+Make sure:
 
-1. The plist paths match your actual setup
-2. You loaded it with `launchctl load` (not `bootstrap`)
-3. The Mac is not asleep at sync time (or enable Power Nap)
+1. You ran `./setup.sh` (it installs the LaunchAgent with correct paths)
+2. The Mac is not asleep at sync time (enable Power Nap in System Settings > Energy)
+3. Check `sync.log` for errors
 
 ## Requirements
 
@@ -196,9 +177,10 @@ The LaunchAgent runs in the GUI session domain, which is required for Keychain a
 
 | File | Purpose |
 |---|---|
+| `setup.sh` | One-time setup: auth, token caching, LaunchAgent install |
 | `sync.sh` | Sync script with retry logic and daily archiving |
-| `com.bee.sync.plist` | macOS LaunchAgent for nightly automation |
-| `AUTH-NOTES.md` | How Bee CLI auth works with macOS Keychain |
+| `com.bee.sync.plist` | macOS LaunchAgent template for nightly automation |
+| `AUTH-NOTES.md` | Technical notes on how Bee CLI auth works with macOS Keychain |
 
 ## License
 

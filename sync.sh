@@ -14,13 +14,27 @@ NOW=$(date -u +%Y-%m-%dT%H:%M:%SZ)
 
 echo "Bee Sync: $NOW"
 
-# Auth check
+# Auth check — ensure token is available
+# Bee CLI stores tokens in macOS Keychain, which is only accessible from GUI
+# sessions (not SSH, not sandboxed shells like Claude Code). We check if bee
+# can reach its token, and if so, proceed. If not, we fall back to a cached
+# token file at ~/.bee/token-prod (populated by the setup script or a prior
+# successful GUI-session run).
+BEE_CONFIG_DIR="${BEE_CONFIG_DIR:-$HOME/.bee}"
+BEE_TOKEN_FILE="$BEE_CONFIG_DIR/token-prod"
+
 echo "Checking authentication..."
-if ! bee status > /dev/null 2>&1; then
-    echo "ERROR: Bee auth is stale. Run bee login interactively to re-authenticate."
+
+if bee status > /dev/null 2>&1; then
+    echo "Auth OK."
+elif [[ -f "$BEE_TOKEN_FILE" ]]; then
+    echo "Auth OK (using cached token)."
+else
+    echo "ERROR: No Bee token found."
+    echo "  Option 1: Run 'bee login' from a GUI terminal (Terminal.app, iTerm)"
+    echo "  Option 2: Run 'bee-sync-setup' to cache your token for non-GUI use"
     exit 1
 fi
-echo "Auth OK."
 
 # Staleness check
 if [[ -f "$LAST_SYNC_FILE" ]]; then
