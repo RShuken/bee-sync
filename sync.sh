@@ -5,7 +5,7 @@ set -euo pipefail
 # Syncs all Bee wearable data to local archive
 # Usage: ~/AI/bee-data/sync.sh
 
-BEE_DATA_DIR="$HOME/AI/bee-data"
+BEE_DATA_DIR="${BEE_DATA_DIR:-$(cd "$(dirname "$0")" && pwd)}"
 CURRENT_DIR="$BEE_DATA_DIR/current"
 ARCHIVE_DIR="$BEE_DATA_DIR/archive"
 LAST_SYNC_FILE="$BEE_DATA_DIR/.last-sync"
