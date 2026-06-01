@@ -22,13 +22,49 @@ echo "Bee Sync: $NOW"
 # successful GUI-session run).
 BEE_CONFIG_DIR="${BEE_CONFIG_DIR:-$HOME/.bee}"
 BEE_TOKEN_FILE="$BEE_CONFIG_DIR/token-prod"
+BEE_STATUS_TIMEOUT="${BEE_STATUS_TIMEOUT:-20}"
+BEE_SYNC_TIMEOUT="${BEE_SYNC_TIMEOUT:-900}"
+
+run_with_timeout() {
+    local TIMEOUT_SECONDS="$1"
+    shift
+
+    local OUTPUT_FILE
+    OUTPUT_FILE=$(mktemp)
+
+    "$@" > "$OUTPUT_FILE" 2>&1 &
+    local CMD_PID=$!
+    local ELAPSED=0
+
+    while kill -0 "$CMD_PID" 2>/dev/null; do
+        if (( ELAPSED >= TIMEOUT_SECONDS )); then
+            pkill -TERM -P "$CMD_PID" 2>/dev/null || true
+            kill "$CMD_PID" 2>/dev/null || true
+            sleep 1
+            pkill -KILL -P "$CMD_PID" 2>/dev/null || true
+            kill -9 "$CMD_PID" 2>/dev/null || true
+            wait "$CMD_PID" 2>/dev/null || true
+            cat "$OUTPUT_FILE"
+            rm -f "$OUTPUT_FILE"
+            return 124
+        fi
+        sleep 1
+        ELAPSED=$((ELAPSED + 1))
+    done
+
+    local CMD_EXIT=0
+    wait "$CMD_PID" || CMD_EXIT=$?
+    cat "$OUTPUT_FILE"
+    rm -f "$OUTPUT_FILE"
+    return "$CMD_EXIT"
+}
 
 echo "Checking authentication..."
 
-if bee status > /dev/null 2>&1; then
+if run_with_timeout "$BEE_STATUS_TIMEOUT" bee status > /dev/null; then
     echo "Auth OK."
 elif [[ -f "$BEE_TOKEN_FILE" ]]; then
-    echo "Auth OK (using cached token)."
+    echo "Auth OK (using cached token; bee status unavailable)."
 else
     echo "ERROR: No Bee token found."
     echo "  Option 1: Run 'bee login' from a GUI terminal (Terminal.app, iTerm)"
@@ -49,16 +85,16 @@ fi
 
 # Sync from Bee (with retries for transient failures)
 MAX_RETRIES=5
-RETRY_DELAY=30
+RETRY_DELAY="${RETRY_DELAY:-30}"
 SYNC_EXIT=1
 
 for ATTEMPT in $(seq 1 $MAX_RETRIES); do
     echo "Syncing from Bee... (attempt $ATTEMPT/$MAX_RETRIES)"
-    bee sync --output "$CURRENT_DIR" 2>&1
-    SYNC_EXIT=$?
-
-    if [[ $SYNC_EXIT -eq 0 ]]; then
+    if run_with_timeout "$BEE_SYNC_TIMEOUT" bee sync --output "$CURRENT_DIR"; then
+        SYNC_EXIT=0
         break
+    else
+        SYNC_EXIT=$?
     fi
 
     if [[ $ATTEMPT -lt $MAX_RETRIES ]]; then

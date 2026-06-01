@@ -9,12 +9,12 @@
         <string>/bin/zsh</string>
         <string>-l</string>
         <string>-c</string>
-        <string>/Users/YOUR_USER/bee-sync/sync.sh</string>
+        <string>__BEE_DATA_DIR__/sync.sh</string>
     </array>
     <key>StandardOutPath</key>
-    <string>/Users/YOUR_USER/bee-sync/sync.log</string>
+    <string>__BEE_DATA_DIR__/sync.log</string>
     <key>StandardErrorPath</key>
-    <string>/Users/YOUR_USER/bee-sync/sync.log</string>
+    <string>__BEE_DATA_DIR__/sync.log</string>
     <key>StartCalendarInterval</key>
     <dict>
         <key>Hour</key>

@@ -14,8 +14,6 @@ BEE_TOKEN_FILE="$BEE_CONFIG_DIR/token-prod"
 PLIST_NAME="com.bee.sync"
 PLIST_SRC="$BEE_DATA_DIR/$PLIST_NAME.plist"
 PLIST_DST="$HOME/Library/LaunchAgents/$PLIST_NAME.plist"
-USERNAME=$(whoami)
-
 echo "=== bee-sync setup ==="
 echo ""
 
@@ -62,7 +60,7 @@ if [[ ! -f "$PLIST_SRC" ]]; then
 fi
 
 # Generate plist with correct paths
-sed "s|YOUR_USER|$USERNAME|g" "$PLIST_SRC" > "$PLIST_DST"
+sed "s|__BEE_DATA_DIR__|$BEE_DATA_DIR|g" "$PLIST_SRC" > "$PLIST_DST"
 echo "  Installed to $PLIST_DST"
 
 # Unload if already loaded, then load
